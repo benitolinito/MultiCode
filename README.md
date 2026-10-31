@@ -51,7 +51,7 @@ code --install-extension apps/vscode/multicode-vscode-0.4.11.vsix
 
 Reload VS Code after installation. Open the Command Palette with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> or <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>, then use:
 
-- **MultiCode: Host Room** — choose Codex or experimental Claude and share its session from the current checkout.
+- **MultiCode: Host Room** — choose Codex or Claude and share its session from the current checkout.
 - **MultiCode: Join Room** — connect with a shared `XXXXX-XXXXX` room code.
 - **MultiCode: Open Chat** — open the shared agent conversation sidebar.
 - **MultiCode: Send Prompt** — add a prompt to the room's shared FIFO queue.
@@ -63,7 +63,7 @@ Reload VS Code after installation. Open the Command Palette with <kbd>Ctrl</kbd>
 
 Room activity appears in the MultiCode sidebar as a shared conversation with participants, queue state, synchronized model and reasoning-level controls, streaming reasoning and responses, commands, generic tools, structured questions, and workspace diffs. A change to either agent setting is reflected for the host and every connected participant, including users who join later. The **MultiCode** output channel keeps the raw process logs, and the status bar shows the current connection. The packaged VSIX includes the MultiCode CLI; hosts still need Git and the selected agent CLI installed locally.
 
-Claude is currently an external-binary MVP. Install the Claude CLI, enable `multicode.experimentalClaude`, optionally set `multicode.claudeExecutable`, and run `claude auth login`. MultiCode uses that local login by default without reading, copying, or relaying its credentials. Hosts can instead select API-key authentication; the key is passed only to the local host subprocess and is not stored in settings, handoff state, or relay messages. Existing stored-key users remain on API-key authentication until they switch explicitly. Claude steering is intentionally hidden until active-turn semantics are verified; queue or interrupt instead.
+Claude hosting uses the locally installed Claude CLI. Install it, optionally set `multicode.claudeExecutable`, and run `claude auth login`. MultiCode uses that local login by default without reading, copying, or relaying its credentials; an `ANTHROPIC_API_KEY` in the host's environment is stripped from the Claude subprocess unless API-key authentication is selected. Hosts can instead select API-key authentication; the key is passed only to the local host subprocess and is not stored in settings, handoff state, or relay messages. Existing stored-key users remain on API-key authentication until they switch explicitly. Claude steering is intentionally hidden until active-turn semantics are verified; queue or interrupt instead.
 
 Settings are available for the default agent, agent executable paths, participant display name, relay URL, and an optional custom MultiCode executable. See [`apps/vscode`](apps/vscode) for extension development details.
 
@@ -89,6 +89,12 @@ Check the hosting environment from the repository you want the agent to modify:
 multicode doctor
 multicode doctor --agent claude --claude-auth subscription
 ```
+
+For Claude, `--claude-auth auto` (the default) prefers your `claude auth login`
+subscription and ignores an ambient `ANTHROPIC_API_KEY` whenever that login is
+available, falling back to the key only when it is not. Pass
+`--claude-auth subscription` to require the subscription, `--claude-auth api-key`
+to bill the key explicitly, or set `MULTICODE_CLAUDE_AUTH` to change the default.
 
 Run `multicode` with no arguments to open the interactive terminal UI. Use the
 launcher to host with Codex or Claude, or paste a room token to join. The existing

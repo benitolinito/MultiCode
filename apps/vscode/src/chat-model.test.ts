@@ -308,4 +308,16 @@ describe("ChatModel", () => {
 
     expect(model.snapshot()).toMatchObject({ connection: "error" });
   });
+
+  it("shows the command and summary for Claude tool approvals", () => {
+    const model = new ChatModel();
+    model.start("join");
+    model.handle(welcome());
+    model.handle({ type: "agent.event", event: { type: "approval.requested", requestId: "bash-1", approvalKind: "claude.tool.Bash", details: { toolName: "Bash", input: { command: "node --check math.js" }, summary: "node --check math.js" } } });
+    model.handle({ type: "agent.event", event: { type: "approval.requested", requestId: "edit-1", approvalKind: "claude.tool.Edit", details: { toolName: "Edit", input: { file_path: "math.js" }, summary: "Edit file: math.js" } } });
+
+    const approvals = model.snapshot().timeline.filter((item) => item.kind === "approval");
+    expect(approvals[0]).toMatchObject({ text: "Command: node --check math.js", approval: { requestId: "bash-1", command: "node --check math.js" } });
+    expect(approvals[1]).toMatchObject({ text: "Edit file: math.js", approval: { requestId: "edit-1", reason: "Edit file: math.js" } });
+  });
 });

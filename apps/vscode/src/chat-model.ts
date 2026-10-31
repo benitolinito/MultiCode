@@ -529,9 +529,13 @@ export class ChatModel {
     cwd?: string;
     reason?: string;
   } {
-    const command = typeof event.details.command === "string" ? event.details.command : undefined;
+    // Claude reports the tool input and a readable summary instead of Codex's top-level command fields.
+    const input = event.details.input !== null && typeof event.details.input === "object" ? event.details.input as Record<string, unknown> : undefined;
+    const claudeCommand = event.details.toolName === "Bash" && typeof input?.command === "string" ? input.command : undefined;
+    const command = typeof event.details.command === "string" ? event.details.command : claudeCommand;
     const cwd = typeof event.details.cwd === "string" ? event.details.cwd : undefined;
-    const reason = typeof event.details.reason === "string" ? event.details.reason : undefined;
+    const summary = !command && typeof event.details.summary === "string" ? event.details.summary : undefined;
+    const reason = typeof event.details.reason === "string" ? event.details.reason : summary;
     return {
       ...(command ? { command } : {}),
       ...(cwd ? { cwd } : {}),

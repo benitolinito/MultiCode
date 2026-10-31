@@ -64,6 +64,30 @@ export async function readClaudeAuthStatus(executable: string, environment: Node
   }
 }
 
+export interface ResolvedClaudeAuthentication {
+  mode: ClaudeAuthMode;
+  status?: ClaudeAuthStatus;
+}
+
+/**
+ * Auto mode prefers the local subscription login, matching
+ * `env -u ANTHROPIC_API_KEY claude`, so an ambient API key is only used when no
+ * subscription login is available.
+ */
+export async function resolveClaudeAuthentication(executable: string, mode: ClaudeAuthMode, source: NodeJS.ProcessEnv = process.env): Promise<ResolvedClaudeAuthentication> {
+  if (mode !== "auto") {
+    const status = await preflightClaudeAuthentication(executable, mode, source);
+    return { mode, ...(status ? { status } : {}) };
+  }
+  const hasAmbientCredential = Boolean(source.ANTHROPIC_API_KEY?.trim() || source.ANTHROPIC_AUTH_TOKEN?.trim() || source.CLAUDE_CODE_OAUTH_TOKEN?.trim());
+  if (!hasAmbientCredential) return { mode };
+  try {
+    const status = await readClaudeAuthStatus(executable, claudeEnvironment("subscription", source));
+    if (status.loggedIn && status.source === "subscription") return { mode: "subscription", status };
+  } catch { /* Fall back to the ambient credential below. */ }
+  return { mode };
+}
+
 export async function preflightClaudeAuthentication(executable: string, mode: ClaudeAuthMode, source: NodeJS.ProcessEnv = process.env): Promise<ClaudeAuthStatus | undefined> {
   const environment = claudeEnvironment(mode, source);
   if (mode === "api-key") return { loggedIn: true, source: "api-key", authMethod: "api_key" };

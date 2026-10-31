@@ -196,11 +196,6 @@
           "default": "codex",
           "description": "Agent provider preselected when hosting a room."
         },
-        "multicode.experimentalClaude": {
-          "type": "boolean",
-          "default": false,
-          "description": "Show experimental Claude support when hosting rooms. Setting defaultAgent to claude also enables it."
-        },
         "multicode.claudeAuthentication": {
           "type": "string",
           "enum": ["subscription", "apiKey"],
