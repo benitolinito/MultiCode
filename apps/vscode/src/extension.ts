@@ -113,10 +113,9 @@ class MultiCodeController implements vscode.Disposable {
 
     const config = vscode.workspace.getConfiguration("multicode");
     const configuredProvider = config.get<AgentProvider>("defaultAgent", "codex");
-    const experimentalClaude = config.get<boolean>("experimentalClaude", false) || configuredProvider === "claude";
     const providers = [
       { label: "Codex", description: "OpenAI Codex app-server", provider: "codex" as const },
-      ...(experimentalClaude ? [{ label: "Claude", description: "Anthropic Claude Agent SDK (experimental)", provider: "claude" as const }] : []),
+      { label: "Claude", description: "Anthropic Claude Code", provider: "claude" as const },
     ];
     providers.sort((left, right) => Number(right.provider === configuredProvider) - Number(left.provider === configuredProvider));
     const selection = await vscode.window.showQuickPick(providers, { placeHolder: "Choose the coding agent for this room", ignoreFocusOut: true });

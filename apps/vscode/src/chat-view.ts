@@ -889,10 +889,12 @@ export class MultiCodeChatView implements vscode.WebviewViewProvider, vscode.Dis
       if ((running && !collapsedActivities.has(activityId)) || (!running && expandedActivities.has(activityId))) details.setAttribute('open', '');
 
       const latestDiff = [...items].reverse().find(item => item.kind === 'diff');
-      const commandCount = items.filter(item => item.kind === 'command').length;
+      const commandCount = items.filter(item => item.kind === 'command' && !String(item.id).startsWith('tool:')).length;
+      const toolCount = items.filter(item => item.kind === 'command' && String(item.id).startsWith('tool:')).length;
       const completedActions = [];
       if (latestDiff) completedActions.push(activityPresentation(latestDiff, false).label);
       if (commandCount) completedActions.push(commandCount === 1 ? 'ran a command' : 'ran commands');
+      if (toolCount) completedActions.push(toolCount === 1 ? 'used a tool' : 'used ' + toolCount + ' tools');
       let label = running
         ? currentPresentation.label
         : (completedActions.length ? completedActions.join(', ') : (duration ? 'Worked for ' + duration : 'Worked'));

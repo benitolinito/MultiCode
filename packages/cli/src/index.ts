@@ -45,7 +45,7 @@ import {
 } from "@multicode/workspace";
 import WebSocket from "ws";
 import { discoverLiveSessionForWorkspace } from "./live-session.js";
-import { claudeAuthMode, claudeEnvironment, preflightClaudeAuthentication, readClaudeAuthStatus, type ClaudeAuthMode } from "./claude-auth.js";
+import { claudeAuthMode, claudeEnvironment, readClaudeAuthStatus, resolveClaudeAuthentication } from "./claude-auth.js";
 import { renderTerminalMarkdown } from "./markdown.js";
 import { parseWorkspaceNumstat } from "./workspace-diff.js";
 import { runInteractiveCli } from "./ui.js";
@@ -80,14 +80,15 @@ function claudeAuthDetail(source: string, subscriptionType?: string): string {
   return "credential source could not be verified";
 }
 
-async function preflightAgentAuthentication(provider: AgentProvider, executablePath: string | undefined, authModeValue: string | undefined): Promise<ClaudeAuthMode | undefined> {
-  if (provider !== "claude") return undefined;
-  const mode = claudeAuthMode(authModeValue);
+async function preflightAgentAuthentication(provider: AgentProvider, executablePath: string | undefined, authModeValue: string | undefined): Promise<string | undefined> {
+  if (provider !== "claude") return authModeValue;
   const executable = agentExecutable(provider, executablePath);
-  const status = await preflightClaudeAuthentication(executable, mode, process.env);
+  const { mode, status } = await resolveClaudeAuthentication(executable, claudeAuthMode(authModeValue), process.env);
   if (status) console.log(out.success(`${out.label("Claude authentication")} ${out.muted(claudeAuthDetail(status.source, status.subscriptionType))}`));
   return mode;
 }
+
+const defaultClaudeAuth = process.env.MULTICODE_CLAUDE_AUTH?.trim() || "auto";
 
 function localInviteCode(): string { const bytes = randomBytes(10); const value = [...bytes].map((byte) => inviteAlphabet[byte % inviteAlphabet.length]).join(""); return `${value.slice(0, 5)}-${value.slice(5)}`; }
 
@@ -180,7 +181,7 @@ async function doctor(options: { agent?: string; agentExecutable?: string; claud
   let claudeCheck: { name: string; ok: boolean; detail: string } | undefined;
   if (provider === "claude") {
     try {
-      const mode = claudeAuthMode(options.claudeAuth);
+      const { mode } = await resolveClaudeAuthentication(executable, claudeAuthMode(options.claudeAuth), process.env).catch(() => ({ mode: claudeAuthMode(options.claudeAuth) }));
       const environment = claudeEnvironment(mode, process.env);
       if (mode === "api-key") {
         claudeCheck = { name: "Claude authentication", ok: true, detail: "Anthropic API key configured" };
@@ -685,12 +686,12 @@ async function prepareHostedWorkspace(roomId: string): Promise<DirectHostedWorks
 
 async function createRoom(options: { agent: string; agentExecutable?: string; claudeAuth?: string; prompt?: string; model?: string; effort?: string; dryRun?: boolean; includeSensitive?: boolean }): Promise<void> {
   const provider = agentProvider(options.agent);
-  if (!options.dryRun) await preflightAgentAuthentication(provider, options.agentExecutable, options.claudeAuth);
+  const claudeAuth = options.dryRun ? options.claudeAuth : await preflightAgentAuthentication(provider, options.agentExecutable, options.claudeAuth);
   const room = await prepareRoom(options.dryRun, options.includeSensitive);
   if (options.dryRun || !room.workspacePath) return;
   const hosted = await prepareHostedWorkspace(room.roomId);
 
-  const adapter = adapterFor(provider, options.agentExecutable, options.claudeAuth);
+  const adapter = adapterFor(provider, options.agentExecutable, claudeAuth);
   try {
     const stop = installStopHandlers(async () => {
       console.error(`\n${err.info("■", "Stopping local room…")}`);
@@ -791,10 +792,11 @@ interface HostRoomOptions {
   includeSensitive?: boolean;
 }
 
-async function hostRoom(options: HostRoomOptions): Promise<void> {
-  if (options.local && options.relay) throw new Error("Use either --local or --relay, not both");
-  const provider = agentProvider(options.agent);
-  await preflightAgentAuthentication(provider, options.agentExecutable, options.claudeAuth);
+async function hostRoom(requested: HostRoomOptions): Promise<void> {
+  if (requested.local && requested.relay) throw new Error("Use either --local or --relay, not both");
+  const provider = agentProvider(requested.agent);
+  const claudeAuth = await preflightAgentAuthentication(provider, requested.agentExecutable, requested.claudeAuth);
+  const options: HostRoomOptions = { ...requested, ...(claudeAuth ? { claudeAuth } : {}) };
   const configuredRelay = options.relay ?? defaultRelayUrl;
   if (!options.local) {
     await hostRemoteRoom({ ...options, relay: configuredRelay });
@@ -1400,6 +1402,8 @@ async function joinRoom(inviteOrCode: string, options: { name: string; relay?: s
       } else {
         printRoomMessage(relayTransportKey ? decryptPromptMessage(message, relayTransportKey) : message);
       }
+      if (message.type === "room.welcome" && message.agentConfig) activeAgentDisplayName = message.agentConfig.displayName;
+      if (message.type === "agent.config") activeAgentDisplayName = message.config.displayName;
       if (message.type === "room.welcome" && !joined) {
         joined = true;
         console.log(`${chalk.green("●")} ${out.label("Joined room")} ${out.value(message.roomId)}`);
@@ -1540,7 +1544,7 @@ const program = new Command()
 program.command("doctor").description("Check local prerequisites")
   .option("--agent <agent>", "agent provider: codex or claude", "codex")
   .option("--agent-executable <path>", "override the selected agent executable")
-  .option("--claude-auth <mode>", "Claude authentication: subscription, api-key, or auto", "auto")
+  .option("--claude-auth <mode>", "Claude authentication: subscription, api-key, or auto (default: $MULTICODE_CLAUDE_AUTH or auto)", defaultClaudeAuth)
   .action(doctor);
 
 const room = program.command("room", { hidden: true }).description("Internal room commands");
@@ -1549,7 +1553,7 @@ room
   .description("Create a local agent room in the current workspace")
   .option("--agent <agent>", "agent adapter", "codex")
   .option("--agent-executable <path>", "override the selected agent executable")
-  .option("--claude-auth <mode>", "Claude authentication: subscription, api-key, or auto", "auto")
+  .option("--claude-auth <mode>", "Claude authentication: subscription, api-key, or auto (default: $MULTICODE_CLAUDE_AUTH or auto)", defaultClaudeAuth)
   .option("--prompt <prompt>", "send an initial prompt")
   .option("--model <model>", "override the configured agent model")
   .option("--effort <effort>", "override the configured reasoning effort")
@@ -1562,7 +1566,7 @@ room
   .description("Host an interactive room that other people can join")
   .option("--agent <agent>", "agent adapter", "codex")
   .option("--agent-executable <path>", "override the selected agent executable")
-  .option("--claude-auth <mode>", "Claude authentication: subscription, api-key, or auto", "auto")
+  .option("--claude-auth <mode>", "Claude authentication: subscription, api-key, or auto (default: $MULTICODE_CLAUDE_AUTH or auto)", defaultClaudeAuth)
   .option("--prompt <prompt>", "queue an initial prompt")
   .option("--model <model>", "override the configured agent model")
   .option("--effort <effort>", "override the configured reasoning effort")
@@ -1590,7 +1594,7 @@ program
   .description(`Start a shared agent room through ${defaultRelayUrl}`)
   .option("--agent <agent>", "agent adapter", "codex")
   .option("--agent-executable <path>", "override the selected agent executable")
-  .option("--claude-auth <mode>", "Claude authentication: subscription, api-key, or auto", "auto")
+  .option("--claude-auth <mode>", "Claude authentication: subscription, api-key, or auto (default: $MULTICODE_CLAUDE_AUTH or auto)", defaultClaudeAuth)
   .option("--prompt <prompt>", "queue an initial prompt")
   .option("--model <model>", "override the configured agent model")
   .option("--effort <effort>", "override the configured reasoning effort")

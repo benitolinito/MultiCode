@@ -2,6 +2,11 @@
 
 All notable changes to the MultiCode VS Code extension are documented here.
 
+## Unreleased
+
+- Claude is now always offered in **MultiCode: Host Room**; the `multicode.experimentalClaude` setting was removed.
+- The CLI's default `--claude-auth auto` now prefers the local Claude subscription login over an ambient `ANTHROPIC_API_KEY`, and `MULTICODE_CLAUDE_AUTH` sets the default mode.
+
 ## 0.4.11
 
 - Improved Marketplace title, description, categories, tags, resources, and visual presentation.
